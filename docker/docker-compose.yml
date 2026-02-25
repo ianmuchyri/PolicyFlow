@@ -1,0 +1,34 @@
+services:
+  policyflow:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    image: policyflow:latest
+    container_name: policyflow
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      DB_PATH: "/data/policyflow.db"
+      # REQUIRED in production — generate with: openssl rand -base64 32
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      BASE_URL: "${BASE_URL:-http://localhost:8080}"
+      # Optional SMTP — leave empty to log emails to stdout
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+    volumes:
+      - policyflow_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/magic-link", "--post-data={}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  policyflow_data:
+    driver: local

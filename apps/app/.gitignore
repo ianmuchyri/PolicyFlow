@@ -1,0 +1,17 @@
+# Go binary
+policyflow
+policyflow.exe
+
+# Database (runtime data)
+*.db
+*.db-wal
+*.db-shm
+
+# Next.js
+web/.next/
+web/node_modules/
+# web/out is intentionally tracked (placeholder) but real build output is generated
+
+# Environment
+.env
+.env.local

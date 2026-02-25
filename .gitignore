@@ -1,0 +1,24 @@
+node_modules
+.next
+.source
+policyflow
+
+# Build output
+build/
+
+# Database files (runtime data)
+*.db
+*.db-wal
+*.db-shm
+
+# Docker secrets
+docker/.env
+
+# Next.js static export (generated — keep placeholder)
+apps/app/web/out/
+!apps/app/web/out/index.html
+
+# Editor
+.DS_Store
+.idea/
+*.swp

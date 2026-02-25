@@ -1,0 +1,59 @@
+# ── Stage 1: Build Next.js frontend ──────────────────────────────────────
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy frontend source
+COPY apps/app/web/package.json apps/app/web/pnpm-lock.yaml* ./web/
+RUN cd web && pnpm install --frozen-lockfile
+
+COPY apps/app/web ./web/
+RUN cd web && pnpm build
+
+# ── Stage 2: Build Go binary ──────────────────────────────────────────────
+FROM golang:1.25-alpine AS go-builder
+
+WORKDIR /app
+
+# Copy Go module files and download deps
+COPY apps/app/go.mod apps/app/go.sum ./apps/app/
+RUN cd apps/app && go mod download
+
+# Copy Go source
+COPY apps/app/*.go ./apps/app/
+COPY apps/app/internal ./apps/app/internal/
+
+# Copy embedded frontend output from previous stage
+COPY --from=frontend-builder /app/web/out ./apps/app/web/out/
+
+# Build the binary
+RUN cd apps/app && \
+    CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -extldflags=-static" \
+    -o /policyflow .
+
+# ── Stage 3: Minimal runtime image ───────────────────────────────────────
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=go-builder /policyflow ./policyflow
+
+# Data directory for SQLite
+RUN mkdir -p /data
+
+# Expose application port
+EXPOSE 8080
+
+# Environment defaults (override at runtime)
+ENV PORT=8080 \
+    DB_PATH=/data/policyflow.db \
+    JWT_SECRET="" \
+    BASE_URL="http://localhost:8080"
+
+ENTRYPOINT ["/app/policyflow"]
