@@ -1,0 +1,11 @@
+{
+  "title": "PolicyFlow",
+  "pages": [
+    "index",
+    "quickstart",
+    "architecture",
+    "auth",
+    "api",
+    "deployment"
+  ]
+}

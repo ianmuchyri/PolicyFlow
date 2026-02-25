@@ -1,0 +1,172 @@
+---
+title: Architecture
+description: System design, data model, and request flow
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## System Overview
+
+PolicyFlow is a **single Go binary** that embeds the compiled Next.js frontend using `go:embed`. There are no external service dependencies — only a local SQLite file.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                  ./build/policyflow                   │
+│                                                       │
+│   ┌──────────────────┐   ┌─────────────────────────┐ │
+│   │  Echo HTTP Server │   │  Embedded Next.js SPA   │ │
+│   │  /api/* routes   │   │  go:embed  web/out/**   │ │
+│   └────────┬─────────┘   └──────────┬──────────────┘ │
+│            │                        │                 │
+│   ┌────────▼─────────────────────────▼──────────────┐ │
+│   │              Request Router                     │ │
+│   │  /api/*  → API handlers                         │ │
+│   │  /*      → Static file server (SPA fallback)    │ │
+│   └─────────────────────────────────────────────────┘ │
+│                         │                             │
+│   ┌─────────────────────▼───────────────────────────┐ │
+│   │              SQLite (WAL mode)                  │ │
+│   │              policyflow.db                      │ │
+│   └─────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────┘
+```
+
+---
+
+## Data Model
+
+```
+users
+  id          TEXT  PK
+  email       TEXT  UNIQUE
+  name        TEXT
+  role        TEXT  Admin | Staff
+  created_by  TEXT  FK → users.id
+  created_at  DATETIME
+
+policies
+  id                  TEXT  PK
+  title               TEXT
+  current_version_id  TEXT  FK → policy_versions.id
+  status              TEXT  Draft | Review | Published | Archived
+  department          TEXT
+  created_at          DATETIME
+
+policy_versions
+  id             TEXT  PK
+  policy_id      TEXT  FK → policies.id
+  content        TEXT  (Markdown)
+  version_string TEXT  (e.g. v1.0.0)
+  changelog      TEXT
+  created_at     DATETIME
+
+acknowledgements
+  id                TEXT  PK
+  user_id           TEXT  FK → users.id
+  policy_version_id TEXT  FK → policy_versions.id
+  timestamp         DATETIME
+  signature_hash    TEXT  SHA-256(user_id + version_id + timestamp)
+  UNIQUE(user_id, policy_version_id)
+```
+
+---
+
+## Policy State Machine
+
+```
+        ┌──────────┐
+        │  Draft   │ ◄──────────────────────┐
+        └────┬─────┘                        │
+             │ Admin moves to Review         │
+             ▼                              │
+        ┌──────────┐                        │
+        │  Review  │                        │
+        └────┬─────┘                        │
+             │ Admin publishes               │
+             ▼                              │
+        ┌───────────┐                       │
+        │ Published │ ─── Staff acknowledges │
+        └────┬──────┘                       │
+             │ Admin archives               │
+             ▼                              │
+        ┌──────────┐                        │
+        │ Archived │ ────────────────────────┘
+        └──────────┘   (can return to Draft)
+```
+
+Transitions are enforced in `PUT /api/policies/:id`. The `status` field accepts: `Draft`, `Review`, `Published`, `Archived`.
+
+---
+
+## Authentication Flow
+
+```
+User                    Frontend               Backend
+ │                          │                     │
+ │  Enter email             │                     │
+ ├─────────────────────────►│                     │
+ │                          │ POST /api/magic-link │
+ │                          ├────────────────────►│
+ │                          │                     │ Build magic JWT
+ │                          │                     │ (sub=email, type=magic, exp=24h)
+ │                          │                     │ Send email (or log)
+ │  Receive email           │                     │
+ ◄──────────────────────────────────────────────── │
+ │                          │                     │
+ │  Click link              │                     │
+ ├──────────────────────────────────────────────► │
+ │                          │  GET /api/magic-login?token=...
+ │                          │                     │ Validate JWT
+ │                          │                     │ Build session JWT
+ │                          │                     │ (sub=user_id, role, exp=7d)
+ │                          │ 302 /auth-callback?token=...
+ │                          ◄────────────────────┤
+ │                          │                     │
+ │                          │ Store token in localStorage
+ │                          │ Redirect → /policies│
+ │                          ├─────────────────────│
+```
+
+---
+
+## Monorepo Layout
+
+```
+policyflow/
+├── Makefile              ← root orchestration
+├── build/
+│   └── policyflow        ← compiled binary (gitignored)
+├── docker/
+│   ├── Dockerfile.backend
+│   └── docker-compose.yml
+├── apps/
+│   ├── app/              ← Go + Next.js
+│   │   ├── main.go       ← server + embed
+│   │   ├── go.mod
+│   │   ├── internal/
+│   │   │   ├── database/ ← schema + all queries
+│   │   │   ├── handlers/ ← auth, users, policies
+│   │   │   ├── middleware/← JWT auth guard
+│   │   │   ├── email/    ← SMTP mailer
+│   │   │   └── seed/     ← initial data
+│   │   └── web/          ← Next.js 15 (output: export)
+│   │       ├── app/      ← App Router pages
+│   │       ├── lib/      ← API client, auth helpers
+│   │       └── components/
+│   └── docs/             ← Fumadocs site (this site)
+└── shared/               ← future: shared types, SQL migrations
+```
+
+---
+
+## Future Integration Points
+
+PolicyFlow is designed to be extended:
+
+| Extension | Hook Point |
+|---|---|
+| **SSO / OIDC** | Replace magic-link handler in `internal/handlers/auth.go` |
+| **Employee import** | New `POST /api/users/import` handler reading CSV/SCIM |
+| **LDAP sync** | Background goroutine syncing `users` from LDAP directory |
+| **Department scoping** | Add `allowed_departments` to policies; filter in `ListPolicies` |
+| **Webhooks** | Fire events from acknowledgement/publish handlers |

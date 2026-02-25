@@ -1,0 +1,9 @@
+# Documentation
+
+- [API Reference](/docs/api): Complete REST API documentation for PolicyFlow
+- [Architecture](/docs/architecture): System design, data model, and request flow
+- [Authentication](/docs/auth): How magic-link authentication works in PolicyFlow
+- [Deployment](/docs/deployment): Deploy PolicyFlow with Docker, systemd, or behind a reverse proxy
+- [Introduction](/docs): What is PolicyFlow and how does it work?
+- [Quickstart](/docs/quickstart): Run PolicyFlow locally in under 5 minutes
+- [Components](/docs/test): Components

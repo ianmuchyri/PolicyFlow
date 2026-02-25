@@ -1,0 +1,134 @@
+# Authentication
+
+
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
+PolicyFlow uses **magic-link authentication** — no passwords required. This reduces the attack surface (no password database to breach) and eliminates password-reset flows.
+
+***
+
+How It Works [#how-it-works]
+
+<Steps>
+  <Step>
+    User requests a login link [#user-requests-a-login-link]
+
+    The user visits PolicyFlow and enters their work email. The frontend calls:
+
+    ```
+    POST /api/magic-link
+    { "email": "user@company.com" }
+    ```
+
+    The server looks up the email. If found, it builds a **magic-link JWT** and sends it by email.
+  </Step>
+
+  <Step>
+    Server generates a magic-link token [#server-generates-a-magic-link-token]
+
+    ```
+    {
+      "sub":  "user@company.com",
+      "type": "magic",
+      "iat":  <now>,
+      "exp":  <now + 24h>
+    }
+    ```
+
+    Signed with `HS256` using `JWT_SECRET`. The server emails:
+
+    ```
+    https://your-domain.com/api/magic-login?token=<jwt>
+    ```
+  </Step>
+
+  <Step>
+    User clicks the link [#user-clicks-the-link]
+
+    The browser hits `GET /api/magic-login?token=<jwt>`. The server:
+
+    1. Validates the JWT signature and expiry
+    2. Looks up the user by email (the `sub` claim)
+    3. Builds a **session JWT**
+    4. Redirects to `/auth-callback?token=<session-jwt>`
+  </Step>
+
+  <Step>
+    Frontend stores the session [#frontend-stores-the-session]
+
+    The `/auth-callback` page reads the token from the URL, stores it in `localStorage`, then redirects to `/policies`.
+
+    All subsequent API calls include `Authorization: Bearer <session-jwt>`.
+  </Step>
+</Steps>
+
+***
+
+Token Types [#token-types]
+
+Magic-Link Token [#magic-link-token]
+
+| Claim  | Value      |
+| ------ | ---------- |
+| `sub`  | User email |
+| `type` | `"magic"`  |
+| `exp`  | 24 hours   |
+
+One-time in spirit — the server validates but doesn't mark tokens as used (acceptable for MVP). For stricter security, store used token hashes in the database.
+
+Session Token [#session-token]
+
+| Claim   | Value                  |
+| ------- | ---------------------- |
+| `sub`   | User ID (UUID)         |
+| `email` | User email             |
+| `role`  | `"Admin"` or `"Staff"` |
+| `type`  | `"session"`            |
+| `exp`   | 7 days                 |
+
+***
+
+Security Properties [#security-properties]
+
+| Property                                   | Status     |
+| ------------------------------------------ | ---------- |
+| No password storage                        | ✅          |
+| Short-lived magic links (24h)              | ✅          |
+| HMAC-signed JWTs                           | ✅          |
+| Role-based access control                  | ✅          |
+| One-time magic links (stored invalidation) | 🔜 Roadmap |
+| Refresh token rotation                     | 🔜 Roadmap |
+| MFA                                        | 🔜 Roadmap |
+
+***
+
+User Provisioning [#user-provisioning]
+
+<Callout>
+  PolicyFlow uses **admin-provisioned accounts** — users cannot self-register. An admin creates the account; the user receives a welcome email.
+</Callout>
+
+```
+POST /api/users (Admin only)
+{
+  "email": "jane@company.com",
+  "name": "Jane Smith",
+  "role": "Staff"
+}
+```
+
+After creation, the server immediately sends a welcome email with a magic link. No separate invitation step needed.
+
+***
+
+JWT Secret Rotation [#jwt-secret-rotation]
+
+To rotate the `JWT_SECRET`:
+
+1. Generate a new secret: `openssl rand -base64 32`
+2. Update the environment variable and restart the server
+3. All existing sessions are immediately invalidated — all users will need to log in again via magic link
+
+For zero-downtime rotation, support for multiple secrets (current + previous) is on the roadmap.

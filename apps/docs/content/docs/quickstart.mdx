@@ -1,0 +1,109 @@
+---
+title: Quickstart
+description: Run PolicyFlow locally in under 5 minutes
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
+## Prerequisites
+
+- Go 1.25+
+- Node.js 22+ and pnpm 10+
+- Git
+
+---
+
+<Steps>
+<Step>
+
+## Clone the repository
+
+```bash
+git clone https://github.com/yourorg/policyflow
+cd policyflow
+```
+
+</Step>
+<Step>
+
+## Build
+
+The `make build` command installs frontend deps, runs `next build`, then compiles the Go binary with the static files embedded:
+
+```bash
+make build
+# → build/policyflow  (~17MB single binary)
+```
+
+</Step>
+<Step>
+
+## Run
+
+```bash
+./build/policyflow
+# WARNING: JWT_SECRET not set — using insecure default (development only)
+# Seeding database with initial data…
+#   Created admin user: admin@policyflow.local
+#   Created staff user: staff@policyflow.local
+#   Created policy: Employee Code of Conduct
+# PolicyFlow listening on :8080
+```
+
+Open **http://localhost:8080**.
+
+</Step>
+<Step>
+
+## Log in
+
+No SMTP is configured in development, so login links are printed directly to the server log:
+
+```
+📧 EMAIL (no SMTP configured)
+To: admin@policyflow.local
+Subject: PolicyFlow — Your login link
+Body:
+  http://localhost:8080/api/magic-login?token=eyJ...
+```
+
+Copy the URL and paste it in your browser to log in as admin.
+
+</Step>
+</Steps>
+
+---
+
+## Development Mode (hot reload)
+
+Run the Go backend and Next.js dev server simultaneously:
+
+```bash
+# Terminal 1
+make dev-frontend    # Next.js on :3001
+
+# Terminal 2
+make dev-backend     # Go on :8080, proxies frontend to :3001
+```
+
+Any changes to `apps/app/web/` will hot-reload in the browser. Go source changes require restarting `make dev-backend`.
+
+---
+
+## Seed Credentials
+
+| Role | Email |
+|---|---|
+| Admin | `admin@policyflow.local` |
+| Staff | `staff@policyflow.local` |
+
+Use the magic-link flow above for either account. The seed only runs once — if you want a fresh start, run `make db-reset`.
+
+---
+
+## Next Steps
+
+- Add real users via the **Admin → Users** tab
+- Create a policy and publish a version
+- Configure SMTP so emails are actually delivered (see [Deployment](/docs/deployment))

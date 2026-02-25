@@ -1,0 +1,221 @@
+# Deployment
+
+
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+
+<Callout type="warn">
+  Always set a strong `JWT_SECRET` in production. Losing this secret invalidates all active sessions.
+</Callout>
+
+Before You Deploy [#before-you-deploy]
+
+Generate a strong JWT secret:
+
+```bash
+openssl rand -base64 32
+# → e.g. xK2mP9qR7vN4jH8tY3wL6cE1fA5bD0uZ...
+```
+
+Set your `BASE_URL` to the public URL of your server — this is used in magic-link emails.
+
+***
+
+Docker (Recommended) [#docker-recommended]
+
+<Tabs items={["Quick start", "With .env file", "Custom port"]}>
+  <Tab value="Quick start">
+    ```bash
+    cd policyflow
+
+    # Build the image
+    make docker-build
+
+    # Start with default settings (JWT_SECRET is required in production!)
+    JWT_SECRET=$(openssl rand -base64 32) \
+    BASE_URL=http://your-server-ip:8080 \
+    docker compose -f docker/docker-compose.yml up -d
+    ```
+  </Tab>
+
+  <Tab value="With .env file">
+    ```bash
+    cp docker/.env.example docker/.env
+    # Edit docker/.env with your values
+
+    make docker-build
+    make docker-up
+    ```
+  </Tab>
+
+  <Tab value="Custom port">
+    ```bash
+    PORT=9000 \
+    JWT_SECRET=your-secret \
+    BASE_URL=http://your-server:9000 \
+    docker compose -f docker/docker-compose.yml up -d
+    ```
+
+    Update the `ports` mapping in `docker/docker-compose.yml` accordingly.
+  </Tab>
+</Tabs>
+
+The SQLite database is persisted in a named Docker volume (`policyflow_data`). To back it up:
+
+```bash
+docker compose exec policyflow cat /data/policyflow.db > backup.db
+```
+
+***
+
+Systemd (bare metal / VM) [#systemd-bare-metal--vm]
+
+```bash
+# Build the binary
+make build
+
+# Copy to system location
+sudo cp build/policyflow /usr/local/bin/policyflow
+sudo mkdir -p /var/lib/policyflow
+
+# Create service file
+sudo tee /etc/systemd/system/policyflow.service <<EOF
+[Unit]
+Description=PolicyFlow
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/lib/policyflow
+Environment=PORT=8080
+Environment=DB_PATH=/var/lib/policyflow/policyflow.db
+Environment=JWT_SECRET=your-secret-here
+Environment=BASE_URL=https://policyflow.yourcompany.com
+Environment=SMTP_HOST=smtp.yourprovider.com
+Environment=SMTP_USER=noreply@yourcompany.com
+Environment=SMTP_PASSWORD=your-smtp-password
+ExecStart=/usr/local/bin/policyflow
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now policyflow
+sudo systemctl status policyflow
+```
+
+***
+
+Reverse Proxy [#reverse-proxy]
+
+PolicyFlow should sit behind a TLS-terminating reverse proxy in production.
+
+<Tabs items={["Nginx", "Caddy", "Traefik"]}>
+  <Tab value="Nginx">
+    ```nginx
+    server {
+        listen 443 ssl;
+        server_name policyflow.yourcompany.com;
+
+        ssl_certificate     /etc/letsencrypt/live/policyflow.yourcompany.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/policyflow.yourcompany.com/privkey.pem;
+
+        location / {
+            proxy_pass         http://127.0.0.1:8080;
+            proxy_set_header   Host              $host;
+            proxy_set_header   X-Real-IP         $remote_addr;
+            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto $scheme;
+        }
+    }
+
+    server {
+        listen 80;
+        server_name policyflow.yourcompany.com;
+        return 301 https://$host$request_uri;
+    }
+    ```
+  </Tab>
+
+  <Tab value="Caddy">
+    ```
+    policyflow.yourcompany.com {
+        reverse_proxy localhost:8080
+    }
+    ```
+
+    Caddy automatically provisions TLS via Let's Encrypt.
+  </Tab>
+
+  <Tab value="Traefik">
+    ```yaml
+    # docker-compose labels approach
+    services:
+      policyflow:
+        labels:
+          - "traefik.enable=true"
+          - "traefik.http.routers.policyflow.rule=Host(`policyflow.yourcompany.com`)"
+          - "traefik.http.routers.policyflow.entrypoints=websecure"
+          - "traefik.http.routers.policyflow.tls.certresolver=letsencrypt"
+          - "traefik.http.services.policyflow.loadbalancer.server.port=8080"
+    ```
+  </Tab>
+</Tabs>
+
+***
+
+SMTP Configuration [#smtp-configuration]
+
+Without SMTP, magic links are printed to stdout (useful for development). For production:
+
+| Provider             | SMTP\_HOST                           | SMTP\_PORT |
+| -------------------- | ------------------------------------ | ---------- |
+| Mailgun              | `smtp.mailgun.org`                   | `587`      |
+| SendGrid             | `smtp.sendgrid.net`                  | `587`      |
+| AWS SES              | `email-smtp.us-east-1.amazonaws.com` | `587`      |
+| Postmark             | `smtp.postmarkapp.com`               | `587`      |
+| Gmail (app password) | `smtp.gmail.com`                     | `587`      |
+
+***
+
+Backup & Restore [#backup--restore]
+
+PolicyFlow stores all data in a single SQLite file.
+
+```bash
+# Backup
+cp /var/lib/policyflow/policyflow.db policyflow-backup-$(date +%Y%m%d).db
+
+# Restore
+systemctl stop policyflow
+cp policyflow-backup-20240101.db /var/lib/policyflow/policyflow.db
+systemctl start policyflow
+```
+
+For automated backups, use SQLite's built-in online backup:
+
+```bash
+# Safe online backup (no service interruption)
+sqlite3 /var/lib/policyflow/policyflow.db ".backup /backup/policyflow-$(date +%Y%m%d).db"
+```
+
+***
+
+Environment Reference [#environment-reference]
+
+| Variable        | Default                 | Description                                                                   |
+| --------------- | ----------------------- | ----------------------------------------------------------------------------- |
+| `JWT_SECRET`    | `dev-secret`            | **Required in production.** HMAC key for signing JWTs.                        |
+| `DB_PATH`       | `policyflow.db`         | Path to SQLite database file.                                                 |
+| `PORT`          | `8080`                  | HTTP listen port.                                                             |
+| `BASE_URL`      | `http://localhost:8080` | Public URL — used in magic link emails.                                       |
+| `SMTP_HOST`     | *(empty)*               | SMTP server hostname. Empty = log emails to stdout.                           |
+| `SMTP_PORT`     | `587`                   | SMTP port (typically 587 for STARTTLS).                                       |
+| `SMTP_USER`     | *(empty)*               | SMTP username.                                                                |
+| `SMTP_PASSWORD` | *(empty)*               | SMTP password.                                                                |
+| `SMTP_FROM`     | `SMTP_USER`             | From address shown in emails.                                                 |
+| `WEB_DEV_PROXY` | *(empty)*               | Dev only: proxy frontend requests to this URL (e.g. `http://localhost:3001`). |
