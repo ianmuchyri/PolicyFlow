@@ -1,5 +1,7 @@
 const TOKEN_KEY = "pf_token";
 
+export type Role = "SuperAdmin" | "DeptAdmin" | "Staff";
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -24,11 +26,13 @@ export function isAuthenticated(): boolean {
   }
 }
 
-export function getTokenPayload(): {
+export interface TokenPayload {
   sub: string;
   email: string;
-  role: string;
-} | null {
+  role: Role;
+}
+
+export function getTokenPayload(): TokenPayload | null {
   const token = getToken();
   if (!token) return null;
   try {
@@ -36,4 +40,17 @@ export function getTokenPayload(): {
   } catch {
     return null;
   }
+}
+
+export function isSuperAdmin(): boolean {
+  return getTokenPayload()?.role === "SuperAdmin";
+}
+
+export function isDeptAdmin(): boolean {
+  return getTokenPayload()?.role === "DeptAdmin";
+}
+
+export function isAnyAdmin(): boolean {
+  const role = getTokenPayload()?.role;
+  return role === "SuperAdmin" || role === "DeptAdmin";
 }

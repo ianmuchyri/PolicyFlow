@@ -33,23 +33,48 @@ PolicyFlow is a **single Go binary** that embeds the compiled Next.js frontend u
 
 ---
 
+## Role-Based Access Control
+
+PolicyFlow uses three roles with strictly enforced scopes:
+
+| Role | Scope | Capabilities |
+|---|---|---|
+| **SuperAdmin** | Organization-wide | Manage all users, departments, and policies |
+| **DeptAdmin** | Own department only | Manage dept users; create and edit dept-scoped policies |
+| **Staff** | Read-only | View accessible policies; record acknowledgements |
+
+<Callout type="info">
+  DeptAdmin actions are fully department-scoped and enforced server-side. A DeptAdmin cannot create organization-wide policies, reassign policies to other departments, or manage users outside their own department.
+</Callout>
+
+---
+
 ## Data Model
 
 ```
-users
+departments
   id          TEXT  PK
-  email       TEXT  UNIQUE
-  name        TEXT
-  role        TEXT  Admin | Staff
-  created_by  TEXT  FK → users.id
+  name        TEXT  UNIQUE
+  description TEXT
   created_at  DATETIME
+  updated_at  DATETIME
+
+users
+  id            TEXT  PK
+  email         TEXT  UNIQUE
+  name          TEXT
+  role          TEXT  SuperAdmin | DeptAdmin | Staff
+  department_id TEXT  FK → departments.id  (nullable)
+  created_by    TEXT  FK → users.id
+  created_at    DATETIME
 
 policies
   id                  TEXT  PK
   title               TEXT
   current_version_id  TEXT  FK → policy_versions.id
   status              TEXT  Draft | Review | Published | Archived
-  department          TEXT
+  department_id       TEXT  FK → departments.id  (nullable)
+  visibility_type     TEXT  organization | department
   created_at          DATETIME
 
 policy_versions
@@ -69,6 +94,11 @@ acknowledgements
   UNIQUE(user_id, policy_version_id)
 ```
 
+### Policy visibility
+
+- `organization` — visible to all authenticated users regardless of department
+- `department` — visible only to users in the same department as the policy
+
 ---
 
 ## Policy State Machine
@@ -77,17 +107,17 @@ acknowledgements
         ┌──────────┐
         │  Draft   │ ◄──────────────────────┐
         └────┬─────┘                        │
-             │ Admin moves to Review         │
+             │ SuperAdmin / DeptAdmin →Review │
              ▼                              │
         ┌──────────┐                        │
         │  Review  │                        │
         └────┬─────┘                        │
-             │ Admin publishes               │
+             │ SuperAdmin / DeptAdmin publish│
              ▼                              │
         ┌───────────┐                       │
         │ Published │ ─── Staff acknowledges │
         └────┬──────┘                       │
-             │ Admin archives               │
+             │ SuperAdmin / DeptAdmin archive│
              ▼                              │
         ┌──────────┐                        │
         │ Archived │ ────────────────────────┘
@@ -95,6 +125,8 @@ acknowledgements
 ```
 
 Transitions are enforced in `PUT /api/policies/:id`. The `status` field accepts: `Draft`, `Review`, `Published`, `Archived`.
+
+SuperAdmin can move any policy through its lifecycle. DeptAdmin can only manage policies within their own department.
 
 ---
 
@@ -168,5 +200,5 @@ PolicyFlow is designed to be extended:
 | **SSO / OIDC** | Replace magic-link handler in `internal/handlers/auth.go` |
 | **Employee import** | New `POST /api/users/import` handler reading CSV/SCIM |
 | **LDAP sync** | Background goroutine syncing `users` from LDAP directory |
-| **Department scoping** | Add `allowed_departments` to policies; filter in `ListPolicies` |
 | **Webhooks** | Fire events from acknowledgement/publish handlers |
+| **PDF audit log** | Export acknowledgement records as signed PDF |

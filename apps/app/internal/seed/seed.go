@@ -9,10 +9,19 @@ import (
 )
 
 // Run seeds the database with initial data if it hasn't been seeded yet.
+// adminEmail and adminName configure the bootstrap admin account; they fall
+// back to "admin@policyflow.local" / "Policy Admin" when empty.
 // It is safe to call on every startup — it is idempotent.
-func Run(db *database.DB) error {
-	// Check if admin user already exists
-	_, err := db.GetUserByEmail("admin@policyflow.local")
+func Run(db *database.DB, adminEmail, adminName string) error {
+	if adminEmail == "" {
+		adminEmail = "admin@policyflow.local"
+	}
+	if adminName == "" {
+		adminName = "Policy Admin"
+	}
+
+	// Check if admin user already exists.
+	_, err := db.GetUserByEmail(adminEmail)
 	if err == nil {
 		return nil // already seeded
 	}
@@ -22,28 +31,40 @@ func Run(db *database.DB) error {
 
 	log.Println("Seeding database with initial data…")
 
-	// Create admin user
-	admin, err := db.CreateUser("admin@policyflow.local", "Policy Admin", "Admin", nil)
+	// Create sample departments.
+	hr, err := db.CreateDepartment("Human Resources", "HR policies and employee relations")
+	if err != nil {
+		return err
+	}
+	log.Printf("  Created department: %s (id=%s)", hr.Name, hr.ID)
+
+	eng, err := db.CreateDepartment("Engineering", "Technical standards and engineering practices")
+	if err != nil {
+		return err
+	}
+	log.Printf("  Created department: %s (id=%s)", eng.Name, eng.ID)
+
+	// Create admin user (SuperAdmin, no department).
+	admin, err := db.CreateUser(adminEmail, adminName, "SuperAdmin", nil, nil)
 	if err != nil {
 		return err
 	}
 	log.Printf("  Created admin user: %s (id=%s)", admin.Email, admin.ID)
 
-	// Create a staff test user
-	staff, err := db.CreateUser("staff@policyflow.local", "Test Staff", "Staff", &admin.ID)
+	// Create a staff test user in HR.
+	staff, err := db.CreateUser("staff@policyflow.local", "Test Staff", "Staff", &admin.ID, &hr.ID)
 	if err != nil {
 		return err
 	}
 	log.Printf("  Created staff user: %s (id=%s)", staff.Email, staff.ID)
 
-	// Create a sample policy
-	policy, err := db.CreatePolicy("Employee Code of Conduct", "Human Resources")
+	// Create a sample org-wide policy.
+	policy, err := db.CreatePolicy("Employee Code of Conduct", "Human Resources", nil, "organization")
 	if err != nil {
 		return err
 	}
 	log.Printf("  Created policy: %s (id=%s)", policy.Title, policy.ID)
 
-	// Create initial version
 	content := `# Employee Code of Conduct
 
 ## 1. Purpose
@@ -84,17 +105,33 @@ By acknowledging this policy, you confirm that you have read, understood, and ag
 	if err != nil {
 		return err
 	}
-
 	if err := db.SetPolicyCurrentVersion(policy.ID, version.ID); err != nil {
 		return err
 	}
-
-	// Publish the policy
-	if err := db.UpdatePolicy(policy.ID, policy.Title, "Published", policy.Department); err != nil {
+	if err := db.UpdatePolicy(policy.ID, policy.Title, "Published", policy.Department, nil, "organization"); err != nil {
 		return err
 	}
-
 	log.Printf("  Created policy version %s (id=%s)", version.VersionString, version.ID)
+
+	// Create a sample department-scoped policy for Engineering.
+	engPolicy, err := db.CreatePolicy("Engineering Security Standards", "Engineering", &eng.ID, "department")
+	if err != nil {
+		return err
+	}
+	engVersion, err := db.CreatePolicyVersion(engPolicy.ID,
+		"# Engineering Security Standards\n\nAll engineers must follow secure coding practices and review guidelines.",
+		"v1.0.0", "Initial release")
+	if err != nil {
+		return err
+	}
+	if err := db.SetPolicyCurrentVersion(engPolicy.ID, engVersion.ID); err != nil {
+		return err
+	}
+	if err := db.UpdatePolicy(engPolicy.ID, engPolicy.Title, "Published", engPolicy.Department, &eng.ID, "department"); err != nil {
+		return err
+	}
+	log.Printf("  Created department policy: %s (id=%s)", engPolicy.Title, engPolicy.ID)
+
 	log.Println("Seeding complete.")
 	return nil
 }

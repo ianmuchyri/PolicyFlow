@@ -38,9 +38,45 @@ export function getMe() {
   return request<User>("/api/me");
 }
 
+// ─── Departments ───────────────────────────────────────────────────────────
+
+export interface Department {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listDepartments() {
+  return request<Department[]>("/api/departments");
+}
+
+export function createDepartment(data: { name: string; description: string }) {
+  return request<Department>("/api/departments", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateDepartment(
+  id: string,
+  data: { name: string; description: string }
+) {
+  return request<Department>(`/api/departments/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteDepartment(id: string) {
+  return request<void>(`/api/departments/${id}`, { method: "DELETE" });
+}
+
 // ─── Policies ─────────────────────────────────────────────────────────────
 
 export type PolicyStatus = "Draft" | "Review" | "Published" | "Archived";
+export type VisibilityType = "organization" | "department";
 
 export interface Policy {
   id: string;
@@ -48,6 +84,9 @@ export interface Policy {
   current_version_id?: string;
   status: PolicyStatus;
   department: string;
+  department_id: string | null;
+  department_name: string | null;
+  visibility_type: VisibilityType;
   created_at: string;
   acknowledged?: boolean;
 }
@@ -85,7 +124,12 @@ export function acknowledgePolicy(id: string) {
   });
 }
 
-export function createPolicy(data: { title: string; department: string }) {
+export function createPolicy(data: {
+  title: string;
+  department?: string;
+  department_id?: string | null;
+  visibility_type?: VisibilityType;
+}) {
   return request<Policy>("/api/policies", {
     method: "POST",
     body: JSON.stringify(data),
@@ -94,7 +138,13 @@ export function createPolicy(data: { title: string; department: string }) {
 
 export function updatePolicy(
   id: string,
-  data: { title?: string; status?: PolicyStatus; department?: string }
+  data: {
+    title?: string;
+    status?: PolicyStatus;
+    department?: string;
+    department_id?: string | null;
+    visibility_type?: VisibilityType;
+  }
 ) {
   return request<Policy>(`/api/policies/${id}`, {
     method: "PUT",
@@ -114,12 +164,16 @@ export function createPolicyVersion(
 
 // ─── Users ─────────────────────────────────────────────────────────────────
 
+export type UserRole = "SuperAdmin" | "DeptAdmin" | "Staff";
+
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: "Admin" | "Staff";
+  role: UserRole;
   created_by?: string;
+  department_id: string | null;
+  department_name: string | null;
   created_at: string;
 }
 
@@ -127,11 +181,35 @@ export function listUsers() {
   return request<User[]>("/api/users");
 }
 
-export function createUser(data: { email: string; name: string; role: string }) {
+export function createUser(data: {
+  email: string;
+  name: string;
+  role: string;
+  department_id?: string | null;
+}) {
   return request<User>("/api/users", {
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+export function updateUser(
+  id: string,
+  data: {
+    name?: string;
+    email?: string;
+    role?: string;
+    department_id?: string | null;
+  }
+) {
+  return request<User>(`/api/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteUser(id: string) {
+  return request<void>(`/api/users/${id}`, { method: "DELETE" });
 }
 
 // ─── Admin ─────────────────────────────────────────────────────────────────

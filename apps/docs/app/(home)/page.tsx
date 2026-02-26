@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from "next/link";
 import {
   Shield,
   Lock,
@@ -12,7 +12,8 @@ import {
   CheckCircle,
   Terminal,
   Zap,
-} from 'lucide-react';
+  Building2,
+} from "lucide-react";
 
 // ─── WIP Banner ────────────────────────────────────────────────────────────
 
@@ -20,9 +21,9 @@ function WIPBanner() {
   return (
     <div className="w-full bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/50 py-2.5 px-4">
       <p className="text-center text-sm text-amber-800 dark:text-amber-300 font-medium">
-        🚧{' '}
-        <span className="font-semibold">Work in Progress</span>{' '}
-        — Core features are functional. Production hardening and SSO are on the roadmap.
+        🚧 <span className="font-semibold">Work in Progress</span> — Core
+        features are functional. Production hardening and SSO are on the
+        roadmap.
       </p>
     </div>
   );
@@ -38,12 +39,12 @@ function Hero() {
         className="absolute inset-0 opacity-[0.03] dark:opacity-[0.06]"
         style={{
           backgroundImage:
-            'repeating-linear-gradient(0deg, transparent, transparent 39px, #888 39px, #888 40px), repeating-linear-gradient(90deg, transparent, transparent 39px, #888 39px, #888 40px)',
+            "repeating-linear-gradient(0deg, transparent, transparent 39px, #888 39px, #888 40px), repeating-linear-gradient(90deg, transparent, transparent 39px, #888 39px, #888 40px)",
         }}
       />
 
       {/* Glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-blue-500/10 dark:bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-150 h-75 bg-blue-500/10 dark:bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative max-w-4xl mx-auto text-center">
         {/* Badge */}
@@ -54,7 +55,7 @@ function Hero() {
 
         {/* Logo + Title */}
         <div className="flex items-center justify-center gap-4 mb-6">
-          <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center shadow-xl shadow-blue-600/30">
+          <div className="shrink-0 w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center shadow-xl shadow-blue-600/30">
             <Shield className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-fd-foreground">
@@ -64,8 +65,11 @@ function Hero() {
 
         {/* Tagline */}
         <p className="text-xl sm:text-2xl text-fd-muted-foreground max-w-2xl mx-auto leading-relaxed mb-10">
-          Policy management that lives{' '}
-          <span className="text-fd-foreground font-semibold">on your infrastructure</span>.
+          Policy management that lives{" "}
+          <span className="text-fd-foreground font-semibold">
+            on your infrastructure
+          </span>
+          .
           <br />
           One binary. Zero ops. Full audit trail.
         </p>
@@ -100,9 +104,10 @@ function Hero() {
 
         {/* Quick install */}
         <div className="mt-12 inline-flex items-center gap-3 px-5 py-3 bg-fd-card border border-fd-border rounded-xl text-sm font-mono text-fd-muted-foreground">
-          <Terminal className="h-4 w-4 text-blue-500 flex-shrink-0" />
+          <Terminal className="h-4 w-4 text-blue-500 shrink-0" />
           <span>
-            <span className="text-slate-400">$</span> make build &amp;&amp; ./build/policyflow
+            <span className="text-slate-400">$</span> make build &amp;&amp;
+            ./build/policyflow
           </span>
         </div>
       </div>
@@ -115,51 +120,59 @@ function Hero() {
 const features = [
   {
     icon: Package,
-    title: 'Single Binary',
+    title: "Single Binary",
     description:
-      'The entire application — Go backend and Next.js frontend — ships as a single ~17MB binary. Copy it to any server and run.',
-    color: 'text-blue-500',
-    bg: 'bg-blue-500/10 dark:bg-blue-500/15',
+      "The entire application — Go backend and Next.js frontend — ships as a single ~17MB binary. Copy it to any server and run.",
+    color: "text-blue-500",
+    bg: "bg-blue-500/10 dark:bg-blue-500/15",
   },
   {
     icon: Database,
-    title: 'SQLite — Zero Ops',
+    title: "SQLite — Zero Ops",
     description:
-      'All data lives in a single file. No Postgres, Redis, or infrastructure to manage. Backups are a simple file copy.',
-    color: 'text-emerald-500',
-    bg: 'bg-emerald-500/10 dark:bg-emerald-500/15',
+      "All data lives in a single file. No Postgres, Redis, or infrastructure to manage. Backups are a simple file copy.",
+    color: "text-emerald-500",
+    bg: "bg-emerald-500/10 dark:bg-emerald-500/15",
   },
   {
     icon: Mail,
-    title: 'Magic-Link Auth',
+    title: "Magic-Link Auth",
     description:
-      'No passwords. Staff log in via a secure link emailed to their work address. Admins control who has access.',
-    color: 'text-violet-500',
-    bg: 'bg-violet-500/10 dark:bg-violet-500/15',
+      "No passwords. Staff log in via a secure link emailed to their work address. Admins control who has access.",
+    color: "text-violet-500",
+    bg: "bg-violet-500/10 dark:bg-violet-500/15",
+  },
+  {
+    icon: Building2,
+    title: "Department-Scoped RBAC",
+    description:
+      "Three roles — SuperAdmin, DeptAdmin, Staff — with server-enforced scoping. Department admins manage only their own team and policies.",
+    color: "text-cyan-500",
+    bg: "bg-cyan-500/10 dark:bg-cyan-500/15",
   },
   {
     icon: GitBranch,
-    title: 'Policy Versioning',
+    title: "Policy Versioning",
     description:
-      'Every policy update creates a new version. Staff are notified and must re-acknowledge. Full history is preserved.',
-    color: 'text-amber-500',
-    bg: 'bg-amber-500/10 dark:bg-amber-500/15',
+      "Every policy update creates a new version. Staff are notified and must re-acknowledge. Full history is preserved.",
+    color: "text-amber-500",
+    bg: "bg-amber-500/10 dark:bg-amber-500/15",
   },
   {
     icon: FileCheck,
-    title: 'Acknowledgement Audit Trail',
+    title: "Acknowledgement Audit Trail",
     description:
-      'Each acknowledgement is recorded with a SHA-256 signature hash tied to the user, version, and timestamp.',
-    color: 'text-pink-500',
-    bg: 'bg-pink-500/10 dark:bg-pink-500/15',
+      "Each acknowledgement is recorded with a SHA-256 signature hash tied to the user, version, and timestamp.",
+    color: "text-pink-500",
+    bg: "bg-pink-500/10 dark:bg-pink-500/15",
   },
   {
     icon: Lock,
-    title: 'Self-Hosted & Private',
+    title: "Self-Hosted & Private",
     description:
-      'Your policy content and employee data never leaves your infrastructure. Apache 2.0 licensed — own it completely.',
-    color: 'text-slate-500',
-    bg: 'bg-slate-500/10 dark:bg-slate-500/15',
+      "Your policy content and employee data never leaves your infrastructure. Apache 2.0 licensed — own it completely.",
+    color: "text-slate-500",
+    bg: "bg-slate-500/10 dark:bg-slate-500/15",
   },
 ];
 
@@ -172,8 +185,8 @@ function Features() {
             Everything you need, nothing you don&apos;t
           </h2>
           <p className="text-fd-muted-foreground max-w-xl mx-auto">
-            PolicyFlow is purpose-built for simplicity. No cloud dependencies, no subscriptions,
-            no surprise bills.
+            PolicyFlow is purpose-built for simplicity. No cloud dependencies,
+            no subscriptions, no surprise bills.
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -182,11 +195,17 @@ function Features() {
               key={f.title}
               className="bg-fd-card border border-fd-border rounded-2xl p-6 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group"
             >
-              <div className={`w-10 h-10 rounded-xl ${f.bg} flex items-center justify-center mb-4`}>
+              <div
+                className={`w-10 h-10 rounded-xl ${f.bg} flex items-center justify-center mb-4`}
+              >
                 <f.icon className={`h-5 w-5 ${f.color}`} />
               </div>
-              <h3 className="font-semibold text-fd-foreground mb-2">{f.title}</h3>
-              <p className="text-sm text-fd-muted-foreground leading-relaxed">{f.description}</p>
+              <h3 className="font-semibold text-fd-foreground mb-2">
+                {f.title}
+              </h3>
+              <p className="text-sm text-fd-muted-foreground leading-relaxed">
+                {f.description}
+              </p>
             </div>
           ))}
         </div>
@@ -199,32 +218,32 @@ function Features() {
 
 const steps = [
   {
-    step: '01',
-    actor: 'Admin',
-    title: 'Create users & policies',
+    step: "01",
+    actor: "SuperAdmin",
+    title: "Set up departments & admins",
     description:
-      'Add employees via the Admin dashboard. Create policies with Markdown content and publish them.',
+      "Create departments and assign Department Admins. Set organization-wide policies that apply to everyone.",
   },
   {
-    step: '02',
-    actor: 'System',
-    title: 'Magic link sent automatically',
+    step: "02",
+    actor: "DeptAdmin",
+    title: "Manage team & dept policies",
     description:
-      'New users receive a welcome email. Existing users can request a fresh login link anytime.',
+      "Add team members and publish department-scoped policies. Scoping is enforced server-side.",
   },
   {
-    step: '03',
-    actor: 'Staff',
-    title: 'Read & acknowledge',
+    step: "03",
+    actor: "Staff",
+    title: "Read & acknowledge",
     description:
-      'Staff log in, read the policy, and click Acknowledge. A cryptographic record is created.',
+      "Staff log in via magic link, read their policies, and click Acknowledge. A cryptographic record is created.",
   },
   {
-    step: '04',
-    actor: 'Admin',
-    title: 'Track compliance',
+    step: "04",
+    actor: "Admin",
+    title: "Track compliance",
     description:
-      'The dashboard shows who has acknowledged each policy version. See gaps at a glance.',
+      "The dashboard shows who has acknowledged each policy version. See gaps at a glance.",
   },
 ];
 
@@ -236,7 +255,9 @@ function Workflow() {
           <h2 className="text-3xl font-bold text-fd-foreground mb-3">
             Simple by design
           </h2>
-          <p className="text-fd-muted-foreground">Four steps from setup to full compliance</p>
+          <p className="text-fd-muted-foreground">
+            Four steps from setup to full compliance
+          </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {steps.map((s, i) => (
@@ -254,8 +275,12 @@ function Workflow() {
                     {s.actor}
                   </span>
                 </div>
-                <h3 className="font-semibold text-fd-foreground text-sm mb-1.5">{s.title}</h3>
-                <p className="text-xs text-fd-muted-foreground leading-relaxed">{s.description}</p>
+                <h3 className="font-semibold text-fd-foreground text-sm mb-1.5">
+                  {s.title}
+                </h3>
+                <p className="text-xs text-fd-muted-foreground leading-relaxed">
+                  {s.description}
+                </p>
               </div>
             </div>
           ))}
@@ -281,20 +306,23 @@ function Architecture() {
               Built on boring technology
             </h2>
             <p className="text-fd-muted-foreground mb-6 leading-relaxed">
-              PolicyFlow is built on proven, boring technology — the kind that runs reliably
-              for years without intervention.
+              PolicyFlow is built on proven, boring technology — the kind that
+              runs reliably for years without intervention.
             </p>
             <ul className="space-y-3">
               {[
-                ['Go 1.25', 'Fast, statically compiled backend'],
-                ['Echo v4', 'HTTP framework with clean middleware'],
-                ['SQLite (WAL)', 'Single-file database, zero setup'],
-                ['Next.js 15', 'Static export — no server-side rendering needed'],
-                ['Tailwind CSS v4', 'Utility-first styling'],
-                ['JWT (HMAC-SHA256)', 'Stateless session tokens'],
+                ["Go 1.25", "Fast, statically compiled backend"],
+                ["Echo v4", "HTTP framework with clean middleware"],
+                ["SQLite (WAL)", "Single-file database, zero setup"],
+                [
+                  "Next.js 15",
+                  "Static export — no server-side rendering needed",
+                ],
+                ["Tailwind CSS v4", "Utility-first styling"],
+                ["JWT (HMAC-SHA256)", "Stateless session tokens"],
               ].map(([name, desc]) => (
                 <li key={name} className="flex items-start gap-3">
-                  <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
                   <span className="text-sm text-fd-foreground">
                     <span className="font-mono font-medium">{name}</span>
                     <span className="text-fd-muted-foreground"> — {desc}</span>
@@ -310,7 +338,9 @@ function Architecture() {
               <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
               <div className="w-2.5 h-2.5 rounded-full bg-amber-500/70" />
               <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
-              <span className="ml-2 text-xs text-slate-400 font-mono">main.go</span>
+              <span className="ml-2 text-xs text-slate-400 font-mono">
+                main.go
+              </span>
             </div>
             <pre className="text-xs font-mono p-5 text-slate-300 leading-relaxed overflow-x-auto">
               <code>{`//go:embed all:web/out
@@ -344,14 +374,14 @@ func main() {
 // ─── Roadmap ───────────────────────────────────────────────────────────────
 
 const roadmap = [
-  { label: 'SSO / OIDC', done: false },
-  { label: 'LDAP / Active Directory sync', done: false },
-  { label: 'Employee CSV import', done: false },
-  { label: 'PDF audit log export', done: false },
-  { label: 'Rich text editor', done: false },
-  { label: 'Email reminders for unacknowledged policies', done: false },
-  { label: 'Department-scoped policy visibility', done: false },
-  { label: 'Webhook notifications (Slack, Teams)', done: false },
+  { label: "SSO / OIDC", done: false },
+  { label: "LDAP / Active Directory sync", done: false },
+  { label: "Employee CSV import", done: false },
+  { label: "PDF audit log export", done: false },
+  { label: "Rich text editor", done: false },
+  { label: "Email reminders for unacknowledged policies", done: false },
+  { label: "Webhook notifications (Slack, Teams)", done: false },
+  { label: "Refresh token rotation", done: false },
 ];
 
 function Roadmap() {
@@ -361,9 +391,12 @@ function Roadmap() {
         <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium mb-6">
           🚧 Roadmap
         </div>
-        <h2 className="text-3xl font-bold text-fd-foreground mb-3">What&apos;s coming</h2>
+        <h2 className="text-3xl font-bold text-fd-foreground mb-3">
+          What&apos;s coming
+        </h2>
         <p className="text-fd-muted-foreground mb-10">
-          PolicyFlow is an MVP. Here&apos;s what&apos;s planned for future releases.
+          PolicyFlow is an MVP. Here&apos;s what&apos;s planned for future
+          releases.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
           {roadmap.map((item) => (
@@ -371,7 +404,7 @@ function Roadmap() {
               key={item.label}
               className="flex items-center gap-3 px-4 py-3 rounded-xl border border-fd-border bg-fd-card text-sm"
             >
-              <div className="w-4 h-4 rounded border-2 border-fd-muted-foreground/40 flex-shrink-0" />
+              <div className="w-4 h-4 rounded border-2 border-fd-muted-foreground/40 shrink-0" />
               <span className="text-fd-muted-foreground">{item.label}</span>
             </div>
           ))}
@@ -387,7 +420,7 @@ function CTA() {
   return (
     <section className="py-20 px-4">
       <div className="max-w-2xl mx-auto text-center">
-        <div className="relative rounded-3xl bg-gradient-to-br from-blue-600 to-blue-700 p-12 overflow-hidden shadow-2xl shadow-blue-600/20">
+        <div className="relative rounded-3xl bg-linear-to-br from-blue-600 to-blue-700 p-12 overflow-hidden shadow-2xl shadow-blue-600/20">
           {/* Background decoration */}
           <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
@@ -397,8 +430,8 @@ function CTA() {
             Own your compliance data
           </h2>
           <p className="text-blue-100 mb-8 leading-relaxed">
-            Deploy PolicyFlow on your own servers in minutes. No vendor lock-in, no monthly bill,
-            no data leaving your network.
+            Deploy PolicyFlow on your own servers in minutes. No vendor lock-in,
+            no monthly bill, no data leaving your network.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -433,9 +466,24 @@ function Footer() {
           <span>— Apache 2.0</span>
         </div>
         <div className="flex items-center gap-6">
-          <Link href="/docs" className="hover:text-fd-foreground transition-colors">Docs</Link>
-          <Link href="/docs/api" className="hover:text-fd-foreground transition-colors">API</Link>
-          <Link href="/docs/deployment" className="hover:text-fd-foreground transition-colors">Deploy</Link>
+          <Link
+            href="/docs"
+            className="hover:text-fd-foreground transition-colors"
+          >
+            Docs
+          </Link>
+          <Link
+            href="/docs/api"
+            className="hover:text-fd-foreground transition-colors"
+          >
+            API
+          </Link>
+          <Link
+            href="/docs/deployment"
+            className="hover:text-fd-foreground transition-colors"
+          >
+            Deploy
+          </Link>
           <a
             href="https://github.com/yourorg/policyflow"
             target="_blank"

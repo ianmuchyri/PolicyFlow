@@ -14,18 +14,23 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronUp,
+  Globe,
+  Building2,
 } from "lucide-react";
 import { Nav } from "@/components/nav";
 import { isAuthenticated } from "@/lib/auth";
 import {
   listPolicies,
+  listDepartments,
   getPolicy,
   getPolicyVersions,
   acknowledgePolicy,
   type Policy,
   type PolicyDetail,
   type PolicyVersion,
+  type Department,
 } from "@/lib/api";
+import MarkdownRenderer from "@/components/markdown-renderer";
 
 const STATUS_META: Record<
   string,
@@ -66,22 +71,48 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function VisibilityBadge({ policy }: { policy: Policy }) {
+  if (policy.visibility_type === "department") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+        <Building2 className="h-3 w-3" />
+        {policy.department_name ?? "Department"}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+      <Globe className="h-3 w-3" />
+      Organization-wide
+    </span>
+  );
+}
+
+function formatDate(s: string) {
+  return new Date(s).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 // ─── Policy List View ──────────────────────────────────────────────────────
 
-function PolicyList({
-  onSelect,
-}: {
-  onSelect: (id: string) => void;
-}) {
+function PolicyList({ onSelect }: { onSelect: (id: string) => void }) {
   const [policies, setPolicies] = useState<(Policy & { acknowledged: boolean })[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
 
   useEffect(() => {
-    listPolicies()
-      .then(setPolicies)
+    Promise.all([listPolicies(), listDepartments()])
+      .then(([p, d]) => {
+        setPolicies(p);
+        setDepartments(d);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -89,9 +120,10 @@ function PolicyList({
   const filtered = policies.filter((p) => {
     const matchSearch =
       p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.department.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === "all" || p.status === filter;
-    return matchSearch && matchFilter;
+      (p.department_name ?? p.department).toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === "all" || p.status === statusFilter;
+    const matchDept = deptFilter === "all" || p.department_id === deptFilter;
+    return matchSearch && matchStatus && matchDept;
   });
 
   if (loading) {
@@ -103,9 +135,7 @@ function PolicyList({
   }
 
   if (error) {
-    return (
-      <div className="text-center py-16 text-red-500">{error}</div>
-    );
+    return <div className="text-center py-16 text-red-500">{error}</div>;
   }
 
   return (
@@ -123,8 +153,8 @@ function PolicyList({
           />
         </div>
         <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
           className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All statuses</option>
@@ -133,6 +163,20 @@ function PolicyList({
           <option value="Review">In Review</option>
           <option value="Archived">Archived</option>
         </select>
+        {departments.length > 0 && (
+          <select
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+            className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All departments</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* List */}
@@ -155,8 +199,10 @@ function PolicyList({
                   <p className="font-medium text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">
                     {p.title}
                   </p>
-                  {p.department && (
-                    <p className="text-xs text-slate-500 mt-0.5">{p.department}</p>
+                  {(p.department_name ?? p.department) && (
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {p.department_name ?? p.department}
+                    </p>
                   )}
                 </div>
               </div>
@@ -252,11 +298,9 @@ function PolicyDetailView({
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
               {policy.title}
             </h1>
-            <div className="flex items-center gap-3 mt-2">
+            <div className="flex flex-wrap items-center gap-2 mt-2">
               <StatusBadge status={policy.status} />
-              {policy.department && (
-                <span className="text-sm text-slate-500">{policy.department}</span>
-              )}
+              <VisibilityBadge policy={policy} />
               {current_version && (
                 <span className="text-sm text-slate-500">
                   {current_version.version_string}
@@ -295,11 +339,7 @@ function PolicyDetailView({
       {/* Content */}
       {current_version ? (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 mb-4">
-          <div className="prose prose-slate dark:prose-invert max-w-none text-sm leading-relaxed">
-            <pre className="whitespace-pre-wrap font-sans text-slate-700 dark:text-slate-300">
-              {current_version.content}
-            </pre>
-          </div>
+          <MarkdownRenderer content={current_version.content} />
         </div>
       ) : (
         <div className="text-center py-12 text-slate-400">
@@ -333,9 +373,7 @@ function PolicyDetailView({
                       <p className="text-xs text-slate-500 mt-0.5">{v.changelog}</p>
                     )}
                   </div>
-                  <span className="text-xs text-slate-400">
-                    {new Date(v.created_at).toLocaleDateString()}
-                  </span>
+                  <span className="text-xs text-slate-400">{formatDate(v.created_at)}</span>
                 </div>
               ))}
             </div>

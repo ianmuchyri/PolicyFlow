@@ -90,7 +90,7 @@ One-time in spirit — the server validates but doesn't mark tokens as used (acc
 |---|---|
 | `sub` | User ID (UUID) |
 | `email` | User email |
-| `role` | `"Admin"` or `"Staff"` |
+| `role` | `"SuperAdmin"`, `"DeptAdmin"`, or `"Staff"` |
 | `type` | `"session"` |
 | `exp` | 7 days |
 
@@ -113,15 +113,16 @@ One-time in spirit — the server validates but doesn't mark tokens as used (acc
 ## User Provisioning
 
 <Callout>
-  PolicyFlow uses **admin-provisioned accounts** — users cannot self-register. An admin creates the account; the user receives a welcome email.
+  PolicyFlow uses **admin-provisioned accounts** — users cannot self-register. A SuperAdmin or DeptAdmin creates the account; the user receives a welcome email.
 </Callout>
 
 ```
-POST /api/users (Admin only)
+POST /api/users  (SuperAdmin or DeptAdmin)
 {
   "email": "jane@company.com",
   "name": "Jane Smith",
-  "role": "Staff"
+  "role": "Staff",        // "Staff", "DeptAdmin", or "SuperAdmin" (SuperAdmin only)
+  "department_id": "uuid" // optional; DeptAdmin callers always use their own department
 }
 ```
 

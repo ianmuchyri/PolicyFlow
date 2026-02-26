@@ -18,7 +18,12 @@ docker/.env
 apps/app/web/out/
 !apps/app/web/out/index.html
 
+# Fumadocs build output
+apps/docs/out/
+
 # Editor
 .DS_Store
 .idea/
 *.swp
+
+.env.local

@@ -5,10 +5,12 @@ import (
 	"embed"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -46,17 +48,24 @@ func main() {
 	if err := db.Init(); err != nil {
 		log.Fatalf("init db: %v", err)
 	}
-	if err := seed.Run(db); err != nil {
+	if err := db.Migrate(); err != nil {
+		log.Fatalf("migrate db: %v", err)
+	}
+
+	adminEmail := os.Getenv("ADMIN_EMAIL")
+	adminName := os.Getenv("ADMIN_NAME")
+	if err := seed.Run(db, adminEmail, adminName); err != nil {
 		log.Printf("seed warning: %v", err)
 	}
 
 	// ── Services ───────────────────────────────────────────────────────────
 	mailer := email.New()
-	authMW := authmw.NewAuth(jwtSecret)
+	authMW := authmw.NewAuth(jwtSecret, db)
 
 	authH := handlers.NewAuth(db, mailer, jwtSecret)
 	userH := handlers.NewUser(db, mailer, jwtSecret)
 	policyH := handlers.NewPolicy(db)
+	deptH := handlers.NewDepartments(db)
 
 	// ── Echo ───────────────────────────────────────────────────────────────
 	e := echo.New()
@@ -79,19 +88,28 @@ func main() {
 	// Authenticated (any role)
 	authAPI := api.Group("", authMW.Require)
 	authAPI.GET("/me", authH.Me)
+	authAPI.GET("/departments", deptH.List)
 	authAPI.GET("/policies", policyH.List)
 	authAPI.GET("/policies/:id", policyH.Get)
 	authAPI.GET("/policies/:id/versions", policyH.Versions)
 	authAPI.POST("/policies/:id/acknowledge", policyH.Acknowledge)
 
-	// Admin only
-	adminAPI := api.Group("", authMW.Require, authMW.RequireAdmin)
-	adminAPI.GET("/users", userH.List)
-	adminAPI.POST("/users", userH.Create)
-	adminAPI.GET("/admin/stats", policyH.AdminStats)
-	adminAPI.POST("/policies", policyH.Create)
-	adminAPI.PUT("/policies/:id", policyH.Update)
-	adminAPI.POST("/policies/:id/versions", policyH.CreateVersion)
+	// DeptAdmin + SuperAdmin
+	deptAdminAPI := api.Group("", authMW.Require, authMW.RequireDeptAdmin)
+	deptAdminAPI.POST("/policies", policyH.Create)
+	deptAdminAPI.PUT("/policies/:id", policyH.Update)
+	deptAdminAPI.POST("/policies/:id/versions", policyH.CreateVersion)
+	deptAdminAPI.GET("/users", userH.List)
+	deptAdminAPI.POST("/users", userH.Create)
+	deptAdminAPI.GET("/admin/stats", policyH.AdminStats)
+
+	// SuperAdmin only
+	superAdminAPI := api.Group("", authMW.Require, authMW.RequireSuperAdmin)
+	superAdminAPI.POST("/departments", deptH.Create)
+	superAdminAPI.PUT("/departments/:id", deptH.Update)
+	superAdminAPI.DELETE("/departments/:id", deptH.Delete)
+	superAdminAPI.PUT("/users/:id", userH.Update)
+	superAdminAPI.DELETE("/users/:id", userH.Delete)
 
 	// ── Frontend ───────────────────────────────────────────────────────────
 	if devProxy := os.Getenv("WEB_DEV_PROXY"); devProxy != "" {
@@ -107,18 +125,36 @@ func main() {
 		if err != nil {
 			log.Fatalf("embed sub FS: %v", err)
 		}
-		fileServer := http.FileServer(http.FS(subFS))
 		e.GET("/*", func(c echo.Context) error {
-			path := strings.TrimPrefix(c.Request().URL.Path, "/")
-			if path == "" {
-				path = "index.html"
+			rawPath := strings.TrimPrefix(c.Request().URL.Path, "/")
+			if rawPath == "" {
+				rawPath = "index.html"
 			}
-			// Serve file if it exists, otherwise fall back to index.html (SPA routing)
-			if _, err := fs.Stat(subFS, path); err != nil {
-				c.Request().URL.Path = "/"
+			// Next.js static export with trailingSlash:false generates `page.html`
+			// files rather than `page/index.html` directories, so check for both.
+			if _, err := fs.Stat(subFS, rawPath); err != nil {
+				htmlPath := rawPath + ".html"
+				if !strings.Contains(rawPath, ".") {
+					if _, err2 := fs.Stat(subFS, htmlPath); err2 == nil {
+						rawPath = htmlPath
+					} else {
+						rawPath = "index.html"
+					}
+				} else {
+					rawPath = "index.html"
+				}
 			}
-			fileServer.ServeHTTP(c.Response(), c.Request())
-			return nil
+			// Serve directly from embed FS to avoid http.FileServer's redirect
+			// behaviour of /index.html → / (which causes an infinite 301 loop).
+			data, err := fs.ReadFile(subFS, rawPath)
+			if err != nil {
+				return echo.ErrNotFound
+			}
+			ct := mime.TypeByExtension(filepath.Ext(rawPath))
+			if ct == "" {
+				ct = http.DetectContentType(data)
+			}
+			return c.Blob(http.StatusOK, ct, data)
 		})
 	}
 

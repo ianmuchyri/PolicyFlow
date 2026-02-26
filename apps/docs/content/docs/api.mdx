@@ -77,10 +77,37 @@ Returns the currently authenticated user.
   "id": "uuid",
   "email": "user@company.com",
   "name": "Jane Smith",
-  "role": "Staff",
+  "role": "DeptAdmin",
+  "department_id": "uuid",
+  "department_name": "Engineering",
   "created_by": "uuid",
   "created_at": "2024-01-15T10:30:00Z"
 }
+```
+
+`role` is one of `SuperAdmin`, `DeptAdmin`, or `Staff`. `department_id` / `department_name` are `null` for users with no department assignment.
+
+---
+
+## Departments
+
+### GET /api/departments
+
+List all departments.
+
+**Auth required (any role)**
+
+```json
+// Response 200
+[
+  {
+    "id": "uuid",
+    "name": "Engineering",
+    "description": "Engineering team",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+]
 ```
 
 ---
@@ -101,12 +128,16 @@ List all policies with the current user's acknowledgement status.
     "title": "Employee Code of Conduct",
     "current_version_id": "uuid",
     "status": "Published",
-    "department": "Human Resources",
+    "department_id": "uuid",
+    "department_name": "Human Resources",
+    "visibility_type": "organization",
     "created_at": "2024-01-01T00:00:00Z",
     "acknowledged": false
   }
 ]
 ```
+
+Results are filtered by visibility: Staff and DeptAdmin only see organization-wide policies plus their own department's policies. SuperAdmin sees all.
 
 ---
 
@@ -124,7 +155,9 @@ Get full policy detail with the current version content.
     "title": "Employee Code of Conduct",
     "current_version_id": "uuid",
     "status": "Published",
-    "department": "Human Resources",
+    "department_id": "uuid",
+    "department_name": "Human Resources",
+    "visibility_type": "organization",
     "created_at": "2024-01-01T00:00:00Z"
   },
   "current_version": {
@@ -203,20 +236,23 @@ Record the current user's acknowledgement of the current version.
 
 ## Admin — Users
 
-<Callout type="error">These endpoints require **Admin** role.</Callout>
+<Callout type="warn">Requires **DeptAdmin** or **SuperAdmin** role. `PUT` and `DELETE` require **SuperAdmin** only.</Callout>
 
 ### GET /api/users
 
-List all users.
+List users. SuperAdmin sees all users; DeptAdmin sees only users in their own department.
 
 ```json
 // Response 200
 [
   {
     "id": "uuid",
-    "email": "admin@company.com",
-    "name": "Policy Admin",
-    "role": "Admin",
+    "email": "jane@company.com",
+    "name": "Jane Smith",
+    "role": "Staff",
+    "department_id": "uuid",
+    "department_name": "Engineering",
+    "created_by": "uuid",
     "created_at": "2024-01-01T00:00:00Z"
   }
 ]
@@ -233,7 +269,8 @@ Create a new user and send them a welcome email with a magic login link.
 {
   "email": "jane@company.com",
   "name": "Jane Smith",
-  "role": "Staff"   // "Staff" (default) or "Admin"
+  "role": "Staff",         // "Staff", "DeptAdmin", or "SuperAdmin"
+  "department_id": "uuid"  // optional
 }
 
 // Response 201
@@ -242,22 +279,41 @@ Create a new user and send them a welcome email with a magic login link.
   "email": "jane@company.com",
   "name": "Jane Smith",
   "role": "Staff",
+  "department_id": "uuid",
+  "department_name": "Engineering",
   "created_by": "uuid",
   "created_at": "2024-04-10T14:00:00Z"
 }
 ```
 
+<Callout type="info">
+  When the caller is a DeptAdmin, the new user is automatically assigned to the caller's department and cannot be assigned `SuperAdmin` role.
+</Callout>
+
 | Code | Description |
 |---|---|
 | `201` | User created, welcome email sent |
 | `400` | Missing required fields or invalid role |
+| `403` | DeptAdmin attempting to create SuperAdmin |
 | `409` | Email already registered |
+
+---
+
+### PUT /api/users/:id — SuperAdmin only
+
+Update an existing user's name, email, role, or department assignment.
+
+---
+
+### DELETE /api/users/:id — SuperAdmin only
+
+Delete a user. Cannot delete yourself or the last SuperAdmin.
 
 ---
 
 ## Admin — Policies
 
-<Callout type="error">These endpoints require **Admin** role.</Callout>
+<Callout type="warn">Requires **DeptAdmin** or **SuperAdmin** role. DeptAdmin actions are restricted to their own department's dept-scoped policies.</Callout>
 
 ### POST /api/policies
 
@@ -267,7 +323,8 @@ Create a new policy (starts in `Draft` status).
 // Request
 {
   "title": "Remote Work Policy",
-  "department": "Operations"
+  "visibility_type": "organization",  // "organization" or "department"
+  "department_id": "uuid"             // required when visibility_type is "department"
 }
 
 // Response 201
@@ -276,16 +333,22 @@ Create a new policy (starts in `Draft` status).
   "title": "Remote Work Policy",
   "current_version_id": null,
   "status": "Draft",
-  "department": "Operations",
+  "visibility_type": "organization",
+  "department_id": null,
+  "department_name": null,
   "created_at": "2024-04-10T00:00:00Z"
 }
 ```
+
+<Callout type="info">
+  When the caller is a DeptAdmin, `visibility_type` is automatically set to `"department"` and `department_id` is set to their department — regardless of what the request body specifies.
+</Callout>
 
 ---
 
 ### PUT /api/policies/:id
 
-Update policy title, status, or department.
+Update policy title, status, department assignment, or visibility.
 
 ```json
 // Request (send only fields you want to change)
@@ -297,6 +360,10 @@ Update policy title, status, or department.
 ```
 
 Valid status values: `Draft`, `Review`, `Published`, `Archived`
+
+<Callout type="info">
+  DeptAdmin can only update policies in their own department. Their updates cannot change `visibility_type` or `department_id`.
+</Callout>
 
 ---
 
@@ -314,6 +381,30 @@ Add a new version and set it as the current version.
 
 // Response 201 — new version object
 ```
+
+---
+
+## Admin — Departments
+
+<Callout type="warn">Requires **SuperAdmin** role.</Callout>
+
+### POST /api/departments
+
+Create a new department.
+
+```json
+// Request
+{ "name": "Legal", "description": "Legal & compliance team" }
+// Response 201 — department object
+```
+
+### PUT /api/departments/:id
+
+Update a department's name or description.
+
+### DELETE /api/departments/:id
+
+Delete a department. Fails if users or policies are still assigned to it.
 
 ---
 
@@ -361,7 +452,7 @@ All errors follow the Echo default format:
 |---|---|
 | `400` | Bad request — check your payload |
 | `401` | Not authenticated — include Bearer token |
-| `403` | Forbidden — Admin role required |
+| `403` | Forbidden — insufficient role or department scope |
 | `404` | Resource not found |
 | `409` | Conflict — duplicate (e.g. email already exists, already acknowledged) |
 | `500` | Internal server error |

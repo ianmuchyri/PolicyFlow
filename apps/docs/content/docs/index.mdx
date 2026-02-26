@@ -43,6 +43,18 @@ Draft → Review → Published → Archived
 
 Only `Published` policies are visible to staff. Admins control all state transitions.
 
+### Roles
+
+PolicyFlow has three roles with strictly enforced scopes:
+
+| Role | Scope | Can do |
+|---|---|---|
+| **SuperAdmin** | Organization-wide | Manage all users, departments, and policies |
+| **DeptAdmin** | Own department | Manage dept users; create/edit dept-scoped policies |
+| **Staff** | Read-only | View accessible policies; acknowledge published versions |
+
+Department admins cannot create organization-wide policies, escalate another user to SuperAdmin, or manage users outside their department — all enforced server-side.
+
 ### Versioning
 
 Each policy update creates a new version (e.g. `v1.0.0`, `v1.1.0`). Staff must re-acknowledge when a new version is published.

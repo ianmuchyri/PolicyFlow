@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Shield, FileText, LayoutDashboard, LogOut } from "lucide-react";
-import { clearToken, getTokenPayload } from "@/lib/auth";
+import { clearToken, getTokenPayload, isAnyAdmin } from "@/lib/auth";
 
 export function Nav() {
   const pathname = usePathname();
@@ -17,7 +17,7 @@ export function Nav() {
 
   const navItems = [
     { href: "/policies", label: "Policies", icon: FileText },
-    ...(payload?.role === "Admin"
+    ...(isAnyAdmin()
       ? [{ href: "/admin", label: "Admin", icon: LayoutDashboard }]
       : []),
   ];
@@ -58,9 +58,19 @@ export function Nav() {
             {payload && (
               <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">
                 {payload.email}
-                {payload.role === "Admin" && (
+                {payload.role === "SuperAdmin" && (
                   <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                    Admin
+                    Super Admin
+                  </span>
+                )}
+                {payload.role === "DeptAdmin" && (
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                    Dept Admin
+                  </span>
+                )}
+                {payload.role === "Staff" && (
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                    Staff
                   </span>
                 )}
               </span>

@@ -1,6 +1,7 @@
 package email
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net/smtp"
@@ -16,6 +17,8 @@ type Mailer struct {
 	username string
 	password string
 	from     string
+	devMode  bool
+	useTLS   bool // true = implicit TLS (port 465); false = STARTTLS (port 587)
 }
 
 func New() *Mailer {
@@ -38,6 +41,8 @@ func New() *Mailer {
 		username: os.Getenv("SMTP_USER"),
 		password: os.Getenv("SMTP_PASSWORD"),
 		from:     from,
+		devMode:  os.Getenv("DEV_EMAIL_MODE") == "true",
+		useTLS:   os.Getenv("SMTP_TLS") == "true",
 	}
 }
 
@@ -76,9 +81,8 @@ After logging in, you can view and acknowledge company policies.
 }
 
 func (m *Mailer) send(to, subject, body string) error {
-	if m.host == "" {
-		// Development fallback: log the email
-		log.Printf("📧 EMAIL (no SMTP configured)\nTo: %s\nSubject: %s\nBody:\n%s", to, subject, body)
+	if m.devMode || m.host == "" {
+		log.Printf("📧 EMAIL (dev mode — not sent)\nTo: %s\nSubject: %s\nBody:\n%s", to, subject, body)
 		return nil
 	}
 
@@ -98,8 +102,60 @@ func (m *Mailer) send(to, subject, body string) error {
 		auth = smtp.PlainAuth("", m.username, m.password, m.host)
 	}
 
-	if err := smtp.SendMail(addr, auth, m.from, []string{to}, []byte(msg)); err != nil {
-		return fmt.Errorf("smtp send: %w", err)
+	if m.useTLS {
+		return m.sendImplicitTLS(addr, auth, to, msg)
 	}
+	return m.sendSTARTTLS(addr, auth, to, msg)
+}
+
+// sendSTARTTLS uses the standard smtp.SendMail which negotiates STARTTLS (port 587).
+func (m *Mailer) sendSTARTTLS(addr string, auth smtp.Auth, to, msg string) error {
+	log.Printf("SMTP: connecting to %s (STARTTLS)…", addr)
+	if err := smtp.SendMail(addr, auth, m.from, []string{to}, []byte(msg)); err != nil {
+		return fmt.Errorf("smtp send (STARTTLS): %w", err)
+	}
+	log.Printf("SMTP: sent to %s", to)
+	return nil
+}
+
+// sendImplicitTLS connects with immediate TLS (port 465).
+func (m *Mailer) sendImplicitTLS(addr string, auth smtp.Auth, to, msg string) error {
+	log.Printf("SMTP: connecting to %s (implicit TLS)…", addr)
+	tlsConfig := &tls.Config{ServerName: m.host}
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("smtp tls dial: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, m.host)
+	if err != nil {
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer client.Quit()
+
+	if auth != nil {
+		log.Printf("SMTP: authenticating as %s…", m.username)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("smtp auth: %w", err)
+		}
+	}
+
+	if err := client.Mail(m.from); err != nil {
+		return fmt.Errorf("smtp MAIL FROM: %w", err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("smtp RCPT TO: %w", err)
+	}
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("smtp DATA: %w", err)
+	}
+	if _, err := fmt.Fprint(w, msg); err != nil {
+		return fmt.Errorf("smtp write: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("smtp close writer: %w", err)
+	}
+	log.Printf("SMTP: sent to %s", to)
 	return nil
 }
