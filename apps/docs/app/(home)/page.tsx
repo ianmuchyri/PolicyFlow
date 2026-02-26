@@ -264,9 +264,9 @@ function Workflow() {
             <div key={s.step} className="relative">
               {/* Connector line */}
               {i < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-6 left-[calc(100%+8px)] w-[calc(100%-16px)] h-px bg-fd-border z-10" />
+                <div className="hidden lg:block absolute top-6 left-full w-6 h-px bg-fd-border" />
               )}
-              <div className="bg-fd-card border border-fd-border rounded-2xl p-5">
+              <div className="bg-fd-card border border-fd-border rounded-2xl p-5 overflow-hidden">
                 <div className="flex items-start justify-between mb-3">
                   <span className="text-3xl font-black text-blue-500/20 dark:text-blue-400/25 leading-none">
                     {s.step}

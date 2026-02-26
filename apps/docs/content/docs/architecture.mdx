@@ -4,32 +4,26 @@ description: System design, data model, and request flow
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
+import { Mermaid } from '@/components/mermaid';
 
 ## System Overview
 
 PolicyFlow is a **single Go binary** that embeds the compiled Next.js frontend using `go:embed`. There are no external service dependencies — only a local SQLite file.
 
-```
-┌──────────────────────────────────────────────────────┐
-│                  ./build/policyflow                   │
-│                                                       │
-│   ┌──────────────────┐   ┌─────────────────────────┐ │
-│   │  Echo HTTP Server │   │  Embedded Next.js SPA   │ │
-│   │  /api/* routes   │   │  go:embed  web/out/**   │ │
-│   └────────┬─────────┘   └──────────┬──────────────┘ │
-│            │                        │                 │
-│   ┌────────▼─────────────────────────▼──────────────┐ │
-│   │              Request Router                     │ │
-│   │  /api/*  → API handlers                         │ │
-│   │  /*      → Static file server (SPA fallback)    │ │
-│   └─────────────────────────────────────────────────┘ │
-│                         │                             │
-│   ┌─────────────────────▼───────────────────────────┐ │
-│   │              SQLite (WAL mode)                  │ │
-│   │              policyflow.db                      │ │
-│   └─────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────┘
-```
+<Mermaid chart={`
+flowchart TB
+  subgraph bin["./build/policyflow"]
+    direction TB
+    echo["Echo HTTP Server\n/api/* routes"]
+    spa["Embedded Next.js SPA\ngo:embed web/out/**"]
+    router["Request Router\n/api/* → API handlers\n/* → SPA fallback"]
+    db["SQLite WAL mode\npolicyflow.db"]
+
+    echo --> router
+    spa  --> router
+    router --> db
+  end
+`} />
 
 ---
 
@@ -103,26 +97,16 @@ acknowledgements
 
 ## Policy State Machine
 
-```
-        ┌──────────┐
-        │  Draft   │ ◄──────────────────────┐
-        └────┬─────┘                        │
-             │ SuperAdmin / DeptAdmin →Review │
-             ▼                              │
-        ┌──────────┐                        │
-        │  Review  │                        │
-        └────┬─────┘                        │
-             │ SuperAdmin / DeptAdmin publish│
-             ▼                              │
-        ┌───────────┐                       │
-        │ Published │ ─── Staff acknowledges │
-        └────┬──────┘                       │
-             │ SuperAdmin / DeptAdmin archive│
-             ▼                              │
-        ┌──────────┐                        │
-        │ Archived │ ────────────────────────┘
-        └──────────┘   (can return to Draft)
-```
+<Mermaid chart={`
+stateDiagram-v2
+  [*] --> Draft
+  Draft --> Review     : Admin promotes to Review
+  Review --> Published : Admin publishes
+  Review --> Draft     : Admin sends back
+  Published --> Archived : Admin archives
+  Archived --> Draft   : Admin resets to Draft
+  Published --> Draft  : Admin demotes
+`} />
 
 Transitions are enforced in `PUT /api/policies/:id`. The `status` field accepts: `Draft`, `Review`, `Published`, `Archived`.
 
@@ -132,32 +116,24 @@ SuperAdmin can move any policy through its lifecycle. DeptAdmin can only manage 
 
 ## Authentication Flow
 
-```
-User                    Frontend               Backend
- │                          │                     │
- │  Enter email             │                     │
- ├─────────────────────────►│                     │
- │                          │ POST /api/magic-link │
- │                          ├────────────────────►│
- │                          │                     │ Build magic JWT
- │                          │                     │ (sub=email, type=magic, exp=24h)
- │                          │                     │ Send email (or log)
- │  Receive email           │                     │
- ◄──────────────────────────────────────────────── │
- │                          │                     │
- │  Click link              │                     │
- ├──────────────────────────────────────────────► │
- │                          │  GET /api/magic-login?token=...
- │                          │                     │ Validate JWT
- │                          │                     │ Build session JWT
- │                          │                     │ (sub=user_id, role, exp=7d)
- │                          │ 302 /auth-callback?token=...
- │                          ◄────────────────────┤
- │                          │                     │
- │                          │ Store token in localStorage
- │                          │ Redirect → /policies│
- │                          ├─────────────────────│
-```
+<Mermaid chart={`
+sequenceDiagram
+  actor User
+  participant Frontend
+  participant Backend
+
+  User->>Frontend: Enter work email
+  Frontend->>Backend: POST /api/magic-link
+  Backend-->>User: Email with magic link (JWT, 24h)
+
+  User->>Backend: GET /api/magic-login?token=…
+  Backend->>Backend: Validate JWT signature & expiry
+  Backend->>Backend: Build session JWT (sub=user_id, role, 7d)
+  Backend-->>Frontend: 302 → /auth-callback?token=session-jwt
+
+  Frontend->>Frontend: Store session JWT in localStorage
+  Frontend-->>User: Redirect to /policies
+`} />
 
 ---
 

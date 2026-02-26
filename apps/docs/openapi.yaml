@@ -1,0 +1,1063 @@
+openapi: 3.1.0
+info:
+  title: PolicyFlow API
+  version: 1.0.0
+  description: |
+    REST API for PolicyFlow — a self-hosted policy management system.
+
+    All authenticated endpoints require a **Bearer session token** obtained via
+    the magic-link login flow.
+
+    ### Roles
+
+    | Role | Scope |
+    |---|---|
+    | `SuperAdmin` | Organization-wide access to all resources |
+    | `DeptAdmin` | Own department only — users and dept-scoped policies |
+    | `Staff` | Read-only — view and acknowledge accessible policies |
+
+servers:
+  - url: http://localhost:8080
+    description: Development
+  - url: https://your-domain.com
+    description: Production
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Session JWT obtained from the magic-link flow. Contains `sub` (user ID),
+        `email`, `role`, and `exp` (7-day expiry).
+
+  schemas:
+    Department:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Engineering
+        description:
+          type: string
+          example: Engineering team
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          example: jane@company.com
+        name:
+          type: string
+          example: Jane Smith
+        role:
+          type: string
+          enum: [SuperAdmin, DeptAdmin, Staff]
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        department_name:
+          type: string
+          nullable: true
+          example: Engineering
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: Employee Code of Conduct
+        current_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [Draft, Review, Published, Archived]
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        department_name:
+          type: string
+          nullable: true
+          example: Human Resources
+        visibility_type:
+          type: string
+          enum: [organization, department]
+        created_at:
+          type: string
+          format: date-time
+
+    PolicyWithAck:
+      allOf:
+        - $ref: '#/components/schemas/Policy'
+        - type: object
+          properties:
+            acknowledged:
+              type: boolean
+
+    PolicyVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        content:
+          type: string
+          description: Markdown content
+          example: "# Employee Code of Conduct\n\n..."
+        version_string:
+          type: string
+          example: v1.0.0
+        changelog:
+          type: string
+          example: Initial release
+        created_at:
+          type: string
+          format: date-time
+
+    Acknowledgement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        policy_version_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        signature_hash:
+          type: string
+          description: SHA-256 of user_id + version_id + timestamp
+          example: a3b4c5d6e7...
+
+    AdminStats:
+      type: object
+      properties:
+        stats:
+          type: object
+          properties:
+            total_users:
+              type: integer
+              example: 42
+            total_policies:
+              type: integer
+              example: 8
+            published_count:
+              type: integer
+              example: 5
+            draft_count:
+              type: integer
+              example: 2
+            review_count:
+              type: integer
+              example: 1
+            archived_count:
+              type: integer
+              example: 0
+            total_acknowledgements:
+              type: integer
+              example: 186
+        ack_counts:
+          type: array
+          items:
+            type: object
+            properties:
+              policy_id:
+                type: string
+                format: uuid
+              title:
+                type: string
+                example: Employee Code of Conduct
+              ack_count:
+                type: integer
+                example: 38
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: human-readable error description
+
+tags:
+  - name: authentication
+    description: Magic-link authentication flow and session management.
+  - name: policies
+    description: Policy listing, detail, versioning, and acknowledgement.
+  - name: users
+    description: >
+      User management. `GET` and `POST` require **DeptAdmin** or **SuperAdmin**.
+      `PUT` and `DELETE` require **SuperAdmin** only.
+  - name: departments
+    description: >
+      Department management. All write operations require **SuperAdmin**.
+      `GET` is available to any authenticated user.
+  - name: admin
+    description: Admin dashboard statistics. Requires **DeptAdmin** or **SuperAdmin**.
+
+paths:
+  # ── Authentication ─────────────────────────────────────────────────────────
+
+  /api/magic-link:
+    post:
+      operationId: requestMagicLink
+      summary: Request a magic login link
+      description: >
+        If the email is registered, a magic-link JWT is emailed to the user.
+        The response is identical whether the email exists or not to prevent
+        user enumeration.
+      tags: [authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@company.com
+      responses:
+        '200':
+          description: Request processed (email sent if address is registered)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: if that email is registered, a link has been sent
+
+  /api/magic-login:
+    get:
+      operationId: magicLogin
+      summary: Validate magic link and issue session
+      description: >
+        Called automatically when a user clicks their magic-link email.
+        Validates the JWT, issues a session token, and redirects to
+        `/auth-callback?token=<session-jwt>`.
+      tags: [authentication]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Magic-link JWT from the email
+      responses:
+        '302':
+          description: Redirect to `/auth-callback?token=<session-jwt>`
+        '400':
+          description: Missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/me:
+    get:
+      operationId: getMe
+      summary: Get current user
+      description: Returns the currently authenticated user including department info.
+      tags: [authentication]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Policies ───────────────────────────────────────────────────────────────
+
+  /api/policies:
+    get:
+      operationId: listPolicies
+      summary: List policies
+      description: >
+        Lists policies visible to the current user. Staff and DeptAdmin see
+        organization-wide policies plus their own department's policies.
+        SuperAdmin sees all policies. Each item includes the user's
+        acknowledgement status for the current version.
+      tags: [policies]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyWithAck'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createPolicy
+      summary: Create a policy
+      description: >
+        Creates a new policy in `Draft` status. Requires **DeptAdmin** or
+        **SuperAdmin**. When called by a DeptAdmin, `visibility_type` is
+        automatically set to `department` and `department_id` is set to the
+        caller's department, regardless of the request body.
+      tags: [policies]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, visibility_type]
+              properties:
+                title:
+                  type: string
+                  example: Remote Work Policy
+                visibility_type:
+                  type: string
+                  enum: [organization, department]
+                department_id:
+                  type: string
+                  format: uuid
+                  description: Required when `visibility_type` is `department`
+      responses:
+        '201':
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '400':
+          description: Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/policies/{id}:
+    get:
+      operationId: getPolicy
+      summary: Get a policy
+      description: Returns full policy detail with the current version content.
+      tags: [policies]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Policy detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    $ref: '#/components/schemas/Policy'
+                  current_version:
+                    $ref: '#/components/schemas/PolicyVersion'
+                    nullable: true
+                  acknowledged:
+                    type: boolean
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      operationId: updatePolicy
+      summary: Update a policy
+      description: >
+        Updates title, status, department, or visibility. Requires **DeptAdmin**
+        or **SuperAdmin**. DeptAdmin may only update policies in their own
+        department, and cannot change `visibility_type` or `department_id`.
+
+        **Valid status transitions:** `Draft → Review → Published → Archived`
+        (and back to `Draft` from `Archived`).
+      tags: [policies]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                status:
+                  type: string
+                  enum: [Draft, Review, Published, Archived]
+                visibility_type:
+                  type: string
+                  enum: [organization, department]
+                department_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        '200':
+          description: Updated policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden — insufficient role or outside your department
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/policies/{id}/versions:
+    get:
+      operationId: listPolicyVersions
+      summary: List policy versions
+      description: Returns the full version history for a policy, ordered newest first.
+      tags: [policies]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Version list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyVersion'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createPolicyVersion
+      summary: Create a policy version
+      description: >
+        Adds a new version and sets it as the current version. Requires
+        **DeptAdmin** or **SuperAdmin**. DeptAdmin may only version policies
+        in their own department; they cannot version organization-wide policies.
+      tags: [policies]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, version_string]
+              properties:
+                content:
+                  type: string
+                  description: Markdown content
+                  example: "# Remote Work Policy\n\n## 1. Eligibility\n..."
+                version_string:
+                  type: string
+                  example: v1.0.0
+                changelog:
+                  type: string
+                  example: Initial release
+      responses:
+        '201':
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyVersion'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden — outside your department or org-wide policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/policies/{id}/acknowledge:
+    post:
+      operationId: acknowledgePolicy
+      summary: Acknowledge a policy
+      description: >
+        Records the current user's acknowledgement of the policy's current
+        version. Creates a SHA-256 signature hash tied to the user, version,
+        and timestamp for an auditable record.
+      tags: [policies]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Acknowledgement recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Acknowledgement'
+        '400':
+          description: Policy not published, or no current version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Already acknowledged this version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Users ──────────────────────────────────────────────────────────────────
+
+  /api/users:
+    get:
+      operationId: listUsers
+      summary: List users
+      description: >
+        Lists users. SuperAdmin sees all users; DeptAdmin sees only users in
+        their own department. Requires **DeptAdmin** or **SuperAdmin**.
+      tags: [users]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createUser
+      summary: Create a user
+      description: >
+        Creates a new user and immediately sends a welcome email containing a
+        magic login link. Requires **DeptAdmin** or **SuperAdmin**.
+
+        When called by a DeptAdmin:
+        - The new user is automatically assigned to the caller's department
+        - `SuperAdmin` role cannot be assigned
+
+        When called by a SuperAdmin:
+        - Any role including `SuperAdmin` may be assigned
+        - `department_id` is optional
+      tags: [users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: jane@company.com
+                name:
+                  type: string
+                  example: Jane Smith
+                role:
+                  type: string
+                  enum: [Staff, DeptAdmin, SuperAdmin]
+                department_id:
+                  type: string
+                  format: uuid
+                  description: Optional; DeptAdmin callers always use their own department
+      responses:
+        '201':
+          description: User created, welcome email sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Missing required fields or invalid role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: DeptAdmin attempting to create SuperAdmin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/{id}:
+    put:
+      operationId: updateUser
+      summary: Update a user
+      description: >
+        Updates a user's name, email, role, or department. Requires
+        **SuperAdmin** only.
+      tags: [users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [Staff, DeptAdmin, SuperAdmin]
+                department_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: SuperAdmin required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteUser
+      summary: Delete a user
+      description: >
+        Deletes a user. Requires **SuperAdmin** only. Cannot delete yourself
+        or the last SuperAdmin in the system.
+      tags: [users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: User deleted
+        '400':
+          description: Cannot delete yourself or last SuperAdmin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: SuperAdmin required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Departments ────────────────────────────────────────────────────────────
+
+  /api/departments:
+    get:
+      operationId: listDepartments
+      summary: List departments
+      description: Lists all departments. Available to any authenticated user.
+      tags: [departments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Department list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Department'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createDepartment
+      summary: Create a department
+      description: Creates a new department. Requires **SuperAdmin**.
+      tags: [departments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: Legal
+                description:
+                  type: string
+                  example: Legal & compliance team
+      responses:
+        '201':
+          description: Department created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: SuperAdmin required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Department name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/departments/{id}:
+    put:
+      operationId: updateDepartment
+      summary: Update a department
+      description: Updates a department's name or description. Requires **SuperAdmin**.
+      tags: [departments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Updated department
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: SuperAdmin required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteDepartment
+      summary: Delete a department
+      description: >
+        Deletes a department. Requires **SuperAdmin**. Fails if users or
+        policies are still assigned to the department.
+      tags: [departments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Department deleted
+        '400':
+          description: Department still has users or policies assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: SuperAdmin required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Department not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Admin ──────────────────────────────────────────────────────────────────
+
+  /api/admin/stats:
+    get:
+      operationId: getAdminStats
+      summary: Get admin statistics
+      description: >
+        Returns aggregate statistics for the admin dashboard, including per-policy
+        acknowledgement counts. Requires **DeptAdmin** or **SuperAdmin**.
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Admin statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStats'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

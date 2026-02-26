@@ -5,8 +5,28 @@ description: How magic-link authentication works in PolicyFlow
 
 import { Callout } from 'fumadocs-ui/components/callout';
 import { Steps, Step } from 'fumadocs-ui/components/steps';
+import { Mermaid } from '@/components/mermaid';
 
 PolicyFlow uses **magic-link authentication** — no passwords required. This reduces the attack surface (no password database to breach) and eliminates password-reset flows.
+
+<Mermaid chart={`
+sequenceDiagram
+  actor User
+  participant Frontend
+  participant Backend
+
+  User->>Frontend: Enter work email
+  Frontend->>Backend: POST /api/magic-link
+  Backend-->>User: Email → magic link (JWT exp=24h)
+
+  User->>Backend: GET /api/magic-login?token=…
+  Backend->>Backend: Validate magic JWT
+  Backend->>Backend: Issue session JWT (exp=7d)
+  Backend-->>Frontend: 302 /auth-callback?token=session-jwt
+
+  Frontend->>Frontend: localStorage.setItem(token)
+  Frontend-->>User: Redirect to /policies
+`} />
 
 ---
 

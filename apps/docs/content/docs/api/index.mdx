@@ -1,0 +1,46 @@
+---
+title: API Reference
+description: Complete REST API reference for PolicyFlow, auto-generated from the OpenAPI spec.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Cards, Card } from 'fumadocs-ui/components/card';
+
+<Callout>
+  All authenticated endpoints require an `Authorization: Bearer <token>` header.
+  Obtain a token via the [magic-link flow](/docs/api/authentication).
+</Callout>
+
+## Base URL
+
+```
+http://localhost:8080    (development)
+https://your-domain.com  (production)
+```
+
+## Sections
+
+<Cards>
+  <Card title="Authentication" href="/docs/api/authentication" description="Magic-link login flow and session management" />
+  <Card title="Policies" href="/docs/api/policies" description="List, read, version, and acknowledge policies" />
+  <Card title="Users" href="/docs/api/users" description="Create and manage user accounts" />
+  <Card title="Departments" href="/docs/api/departments" description="Manage organizational departments" />
+  <Card title="Admin" href="/docs/api/admin" description="Dashboard statistics" />
+</Cards>
+
+## Error Responses
+
+All errors follow the Echo default format:
+
+```json
+{ "message": "human-readable error description" }
+```
+
+| Code | Meaning |
+|---|---|
+| `400` | Bad request — check your payload |
+| `401` | Not authenticated — include Bearer token |
+| `403` | Forbidden — insufficient role or department scope |
+| `404` | Resource not found |
+| `409` | Conflict — duplicate resource |
+| `500` | Internal server error |

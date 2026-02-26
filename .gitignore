@@ -21,6 +21,13 @@ apps/app/web/out/
 # Fumadocs build output
 apps/docs/out/
 
+# Auto-generated API docs MDX (regenerated from openapi.yaml at build time)
+apps/docs/content/docs/api/authentication.mdx
+apps/docs/content/docs/api/policies.mdx
+apps/docs/content/docs/api/users.mdx
+apps/docs/content/docs/api/departments.mdx
+apps/docs/content/docs/api/admin.mdx
+
 # Editor
 .DS_Store
 .idea/
